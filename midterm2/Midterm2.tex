@@ -1,0 +1,529 @@
+\documentclass[]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage[]{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\PassOptionsToPackage{hyphens}{url} % url is loaded by hyperref
+\usepackage[unicode=true]{hyperref}
+\hypersetup{
+            pdftitle={Midterm2 Stat 151A, Spring 2020},
+            pdfauthor={Kanak Garg},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage[margin=1in]{geometry}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.77,0.63,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+% set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+
+
+\title{Midterm2 Stat 151A, Spring 2020}
+\author{Kanak Garg}
+\date{April 12, 2020}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}\label{introduction}
+
+Capital Bikeshare System is a bike rental service in our countries
+capital, at Washington D.C. Luckily, Capital Bikeshare System has been
+collecting information over the course of the last two years regarding
+their rental service; gathering information such as the date, the
+season, the weather conditions and more. In this report, we will touch
+on using this information to see if we can accurately predict bike
+rentals in a given hour using this information.
+
+\section{Data Description}\label{data-description}
+
+Each row of the data structure correlates to the amount of bike rentals
+for a specific hour over the course of two years. The row comprises of
+different variables corresponding to time and weather. Time is divided
+up by the different specifications for the time of the purchase -- for
+example the month, year, season, year. The data also tracks the weather,
+as different weather conditions that may affect bike rental. Many of the
+columns in the Bike Rental Data are markers, such as season or year,
+that are incorrectly configured as integers. In order for the data to be
+usable, these columns must be converted from integer values to the type
+factor. The DTEDAY column must be converted to a Date format, as it is a
+Date.
+
+\begin{verbatim}
+##   instant     dteday season yr mnth hr holiday weekday workingday weathersit
+## 1       1 2011-01-01      1  0    1  0       0       6          0          1
+## 2       2 2011-01-01      1  0    1  1       0       6          0          1
+## 3       3 2011-01-01      1  0    1  2       0       6          0          1
+## 4       4 2011-01-01      1  0    1  3       0       6          0          1
+## 5       5 2011-01-01      1  0    1  4       0       6          0          1
+## 6       6 2011-01-01      1  0    1  5       0       6          0          2
+##   temp  atemp  hum windspeed casual registered cnt
+## 1 0.24 0.2879 0.81    0.0000      3         13  16
+## 2 0.22 0.2727 0.80    0.0000      8         32  40
+## 3 0.22 0.2727 0.80    0.0000      5         27  32
+## 4 0.24 0.2879 0.75    0.0000      3         10  13
+## 5 0.24 0.2879 0.75    0.0000      0          1   1
+## 6 0.24 0.2576 0.75    0.0896      0          1   1
+\end{verbatim}
+
+\section{Exploratory Data Analysis}\label{exploratory-data-analysis}
+
+Of the 17 data variables that are given to us in the Bike Rental Data,
+we can logically eliminate four of the columns in order to end up with a
+remaining working data set. The columns INSTANT is a unique number that
+corresponds to a row of the dataset, which is useful in data management,
+however unneccessary for linear modeling. The column dteday is very
+useful as well as it tells us the date for every purchase, however the
+rest of our time indicator variables are sufficient and makes this
+column unneccessary. The last two columns requiring analysis are columns
+registered and casual, which correspond to the type of customer making a
+rental. Since CNT = Casual + Registered, a linear model of CNT would be
+equivalent to making a linear model of Casual and linear model of
+Registered and adding it together. Thus we can further clean data by
+removing these two columns.
+
+Further inspecting the dataset, we must divide the variables into
+categorical and continous variables. We must inspect both to determine
+the validity of these input variables through univariate and bivariate
+variable analysis.
+
+\subsubsection{Univariate Variable
+Analysis}\label{univariate-variable-analysis}
+
+There were some important charcteristics about the data that stood out
+during univariate data analysis. The rest of the continuous data types
+seemed to have no skew, thus are fairly normal. Another interesting
+characteristic of the data is the variable HOLIDAY, which has over 16000
+datapoints for non holidayss, and 500 datapoints for holidays. This is
+not ideal as we would like to have more HOLIDAY data values to make a
+more sound determination. The rest of the categorical variables have an
+even distribution.
+
+\begin{verbatim}
+##     instant          dteday               season            yr        
+##  Min.   :    1   Min.   :2011-01-01   Min.   :1.000   Min.   :0.0000  
+##  1st Qu.: 4346   1st Qu.:2011-07-04   1st Qu.:2.000   1st Qu.:0.0000  
+##  Median : 8690   Median :2012-01-02   Median :3.000   Median :1.0000  
+##  Mean   : 8690   Mean   :2012-01-02   Mean   :2.502   Mean   :0.5026  
+##  3rd Qu.:13034   3rd Qu.:2012-07-02   3rd Qu.:3.000   3rd Qu.:1.0000  
+##  Max.   :17379   Max.   :2012-12-31   Max.   :4.000   Max.   :1.0000  
+##                                                                       
+##       mnth            hr        holiday   weekday  workingday weathersit
+##  5      :1488   16     :  730   0:16879   0:2502   0: 5514    1:11413   
+##  7      :1488   17     :  730   1:  500   1:2479   1:11865    2: 4544   
+##  12     :1483   13     :  729             2:2453              3: 1419   
+##  8      :1475   14     :  729             3:2475              4:    3   
+##  3      :1473   15     :  729             4:2471                        
+##  10     :1451   12     :  728             5:2487                        
+##  (Other):8521   (Other):13004             6:2512                        
+##       temp           atemp             hum           windspeed     
+##  Min.   :0.020   Min.   :0.0000   Min.   :0.0000   Min.   :0.0000  
+##  1st Qu.:0.340   1st Qu.:0.3333   1st Qu.:0.4800   1st Qu.:0.1045  
+##  Median :0.500   Median :0.4848   Median :0.6300   Median :0.1940  
+##  Mean   :0.497   Mean   :0.4758   Mean   :0.6272   Mean   :0.1901  
+##  3rd Qu.:0.660   3rd Qu.:0.6212   3rd Qu.:0.7800   3rd Qu.:0.2537  
+##  Max.   :1.000   Max.   :1.0000   Max.   :1.0000   Max.   :0.8507  
+##                                                                    
+##      casual         registered         cnt       
+##  Min.   :  0.00   Min.   :  0.0   Min.   :  1.0  
+##  1st Qu.:  4.00   1st Qu.: 34.0   1st Qu.: 40.0  
+##  Median : 17.00   Median :115.0   Median :142.0  
+##  Mean   : 35.68   Mean   :153.8   Mean   :189.5  
+##  3rd Qu.: 48.00   3rd Qu.:220.0   3rd Qu.:281.0  
+##  Max.   :367.00   Max.   :886.0   Max.   :977.0  
+## 
+\end{verbatim}
+
+\subsubsection{Bivariate Variable
+Analysis}\label{bivariate-variable-analysis}
+
+Onto a bivariate analysis of the variables. We see a paired similarity
+between the variables SEASON and MONTH. Graphing the boxplot of both,
+shows that month may be a better categorical variable to use as there
+seems to be differences between months in a season, however not in
+seasons in months (only a few months have multiple seasons per month,
+most only have one). Using the pairs graph we analysze all the
+continuous variables below. As in Figure 1, there seems to be
+correlation between TEMP and ATEMP. Since ATEMP has a smaller
+z-statistic, we decided to use ATEMP.
+
+Analyzing the paired relationship between WEEKDAY,WORKINGDAY and
+HOLIDAY, I believe we condense the variables to only one or two.
+WEEKDAYs is the broadest variable, while WORKINGDAY and HOLIDAY gives us
+more information. The difference in average rentals for WORKINGDAY and
+HOLIDAY seem to be significant enough to keep in the data. Furthermore
+from the pair analysis, we should remove WEEKDAYS, however we dont have
+enough information from the data and should wait till model selection to
+decide.
+
+\begin{figure}
+\centering
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-2-1.pdf}
+\caption{\label{fig:vars} Figure 1: Paired plot of all the the weather
+data, which helps determine which of the weather data can be used to
+interpret CNT.}
+\end{figure}
+
+\section{Model Selection}\label{model-selection}
+
+Now that we have narrowed down the parameters to a usable set of
+variables, we want to tranform our data and determine which of these
+variables are necessary in order to determine an accurate model.
+
+\subsubsection{Transforming CNT}\label{transforming-cnt}
+
+After removing the variables we talked about above, we must look at CNT
+relationship with the input variables. A plot of the fully fitted linear
+model is below in Figure 2. Looking at the outputted graphs, we see a
+slight curve in the residuals as well as a a graph that lacks fit in the
+initial and end of the q-q plot. The scale location model seems to
+increase toward the end of the graph, hinting at a lack of
+homoscedascity. The last residuals vs leverage graph shows us 3 data
+points that are high leverage and could thus be influential points.
+
+\begin{figure}
+\centering
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-4-1.pdf}
+\caption{\label{fig:lm} Figure 2: Fully fitted data model of Count data
+using all explanatory variables provided in the dataset.}
+\end{figure}
+
+The best way to deal with this is by taking a log of the CNT data.
+
+\subsubsection{Influential Points}\label{influential-points}
+
+In the linear model of Figure 2, we also see three important high
+leverage points at (586,9124,8855). These points are not necessarily a
+bad sign - however in order to determine a correct model, we remove
+these points in order to prevent any change they may have on the data.
+However, as they properly align with the rest of the data, as seen in
+the Residual vs Leverage graph, there is a low chance that they will
+severly impact our linear regression.
+
+\begin{figure}
+\centering
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-5-1.pdf}
+\caption{\label{fig:lmtrans} Figure 3: Graphing the linear model after
+making transformations to output variables and removing leverage
+points.}
+\end{figure}
+
+The resulting linear model, Figure 3, is a lot better as the Residual vs
+Fitted graph are more centered around the mean and the Residuals vs
+Leverage is more linear. Some points of concern include a dip in
+Scale-Location graph toward later values, and a lag in initial values in
+the Q-Q Plot. This may indicate slight heteroscedascity, where values
+have less variance almost halfway through the dataset. Also our data
+seems to be less normal in the initial half of the dataset. Since the
+data is divided into two, as seen in the plot of CNT, as well as the Q-Q
+plot and Scale-Location, there may be some interaction present with the
+variable YR as it is the only variable that divides the dataset in half.
+
+\subsubsection{Forward Selection}\label{forward-selection}
+
+We have many options for determining such model -- including forward
+selection, backward selection, stepwise selection or even Lasso and
+Ridge regression. In this model we determine to use a forward selection
+model as it seems the most appropiate and aggregate tests over many
+different factors. Though backward selection would also be appropiate,
+attempting to run Lasso and Ridge did not seem to be successful due to
+the presence of many categorical variables in the data.
+
+In forward selection, the best way to determine if a model is appropiate
+is to start with an empty model and filter in variables based on which
+seems to be the most appropiate to the model. We use many different
+criteria -- p-values, AIC, BIC, Mallows C'p and Adjusted R\^{}2. The way
+we perform forward selection is by creating a model and adding the best
+variable one at a time as long as the criteria is met. The set of
+variables we decided to use are the basic variables in the data as well
+as year's interaction with the other time categorical variables.
+
+Based on every criteria that we perform forward selection, we end up
+with the same model. The best model for predicting the data seems to
+contain all input variables as well as time variables and their
+interaction with YEAR. We end up with 3 main models --
+
+\textbf{Forward selection (p-val)} \{``hr'' ``yr'' ``mnth''
+``weathersit'' ``atemp'' ``yr*mnth" ``weekday'' ``hum'' ``holiday''\}
+
+\textbf{Forward selection (adjusted R\^{}2) } \{``windspeed''
+``holiday'' ``hum'' ``yr*weekday" ``atemp'' ``weathersit'' ``yr*mnth"
+``yr*hr" \}
+
+\textbf{Forward selection (AIC,BIC,Mallows Cp)} \{``yr*hr" ``yr*mnth"
+``weathersit'' ``atemp'' ``weekday'' ``hum'' ``holiday'' ``windspeed''\}
+
+\subsubsection{Selecting Model}\label{selecting-model}
+
+Of the three models, we prefer the model that can predict the best. Thus
+we use cross validation in order to determine which model has the
+highest probability of predicting future values. Of the three, the
+forward selection with p-val proved to have the highest probability,
+even though by a slight value. Thus the model we chose is Model 1. The
+probabibilities are printed below in order as its listen above.
+
+\begin{verbatim}
+## [1] 0.6294442 0.6284303 0.6282918
+\end{verbatim}
+
+\section{Interpretation}\label{interpretation}
+
+Our chosen model is -
+
+\(log(CNT) = A + b_{hr} hr + b_{yr} yr + b_{mnth} mnth + br_{yxm} yr*mnth + br_{wd} weekday + br_{holiday} holiday + b_{ws} weathersit + b_{atemp} atemp + br_{hum} hum\)
+
+Thus the total count of rentals procured in an hour is dependent on
+which hour of the day it is, the month, year, weekday, weather situation
+outside, how it feels outside, the humidity, whether or not today is a
+holiday and a interaction between the year and month element.
+
+There are two types of variables used in our model - continous and
+categorical variables. The continous variables in the model are ATEMP
+and HUM.
+
+\begin{itemize}
+\item
+  \textbf{ATEMP} is the temperature that it feels like outside. This
+  means that if the ATEMP values were to max out at 50, to reach a value
+  of 1, then our model would have a postive increase of 1.433 for the
+  log(CNT). As the temperature increases, the model predicts more
+  rentals.
+\item
+  \textbf{HUM} is the humidity normalized. If the humidity were to max
+  out at 100, to reach a value of 1, our model would decrease by a value
+  0.26124 for the log(CNT). AS the humidity increase, the model predicts
+  less rentals.
+\end{itemize}
+
+The categorical variables are HR, YR, MNTH, WEEKDAY, HOLIDAY, and
+WEATHERSIT.
+
+\begin{itemize}
+\item
+  \textbf{HR} is the hour at which the rental was made. The natural
+  value for this variable is set at hour 0 and all our data can be an
+  interpretation relative to midnight of the day. We see an initial
+  decrease in rentals from 12 - 5 AM, but then a sudden increase in
+  rentals from 6 AM to 5 PM. 6 PM and onward the rentals decrease but
+  end off on an overall increase from the day start.
+\item
+  \textbf{MNTH/YR} is the month and year of whihc the rental was made.
+  The natural setting for this variable is year 0, January. As we move
+  to the year 1, There is an on average increase of 0.78 in log(CNT). As
+  we move from January to the other months, the amount of rentals tend
+  to increase and follow a bimodal trend with a max on May and October.
+  Thus as the years progress and was we travel through the year, the
+  amount of rentals increase. We also included an interaction between
+  MNNTH and YEAR, as we postulated a difference in rentals between the
+  years. Overall, the affect of time on rentals comes out to (0.78 - the
+  coefficient of yr:mnthx + mnthx) for months in year1, an overall
+  increase from the year before.
+\item
+  \textbf{WEEKDAY} is the weekday from our data set. The natural setting
+  is sunday, and the rest of the data is relative to sunday on the week.
+  We see the most rentals on Friday and Saturday and a mediocre amount
+  of rentals the rest of the week.
+\item
+  \textbf{HOLIDAY} is an indicator variable determining if the day is a
+  holiday or not. Though there were not many holiday variables, the
+  difference between the rentals on non holiday days and holiday days
+  were significant enough to include in our model. The average amount of
+  rentals decrease by 0.1874 when there is a holiday.
+\item
+  \textbf{WEATHERSIT} is an indicator of the weather during the day. The
+  best weather for rentals is waether type 1 -- clear out with few
+  clouds. As the weather progresses through the types, becoming more
+  severe, the amount of bike rentals go down. Something interesting to
+  notice is the lack of a weathersit4 predictor, whihc may be due to the
+  lack of enough samples for this data point.
+\end{itemize}
+
+The last point to interpret is our intercept, which lets us know default
+values. In the case that we were in year 0, midnight on Sunday in
+January which is not a holiday but has good weather, with a humidity of
+0 and felt like 0 degrees, we predict to have a 2.4279 log(cnt) of sales
+in that day.
+
+\section{Conclusion}\label{conclusion}
+
+Overall I beleive this model makes sense, as the business continues to
+grow through time the amount of rentals should increase. As well as
+important factors about the day, whether people tend to work on that
+day, whether it is a holiday, if the time of the year is good or not,
+all could be factors for bike rentals for customer. Humidity and the
+temperature it feels like outside are also important factors for
+customer's chosing to do a outdoors activity. Thus these variables can
+appropiately and logically be placed in the model. In further bikeshare
+use, businesses would benefit from marketing on days that are more
+favorable to them, as they can predict more bike use on that day.
+
+This model also seems to be the best fit as it has a some of the top
+R\^{}2, high AIC, BIC, and Mallow's Cp compared to other models and the
+model we used in the beginning. Thus through all interpretation, this
+model seems to be the best fit.
+
+\(log(CNT) = A + b_{hr} hr + b_{yr} yr + b_{mnth} mnth + br_{yxm} yr*mnth + br_{wd} weekday + br_{holiday} holiday + b_{ws} weathersit + b_{atemp} atemp + br_{hum} hum\)
+
+\newpage
+
+\section{APPENDIX}\label{appendix}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{hist}\NormalTok{((bike}\OperatorTok{$}\NormalTok{cnt)}\OperatorTok{^}\NormalTok{(}\DecValTok{1}\OperatorTok{/}\DecValTok{2}\NormalTok{))}
+\KeywordTok{abline}\NormalTok{(}\DataTypeTok{v =} \KeywordTok{mean}\NormalTok{((bike}\OperatorTok{$}\NormalTok{cnt)}\OperatorTok{^}\NormalTok{(}\DecValTok{1}\OperatorTok{/}\DecValTok{2}\NormalTok{)), }\DataTypeTok{col =} \StringTok{"blue"}\NormalTok{, }\DataTypeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\KeywordTok{abline}\NormalTok{(}\DataTypeTok{v =} \KeywordTok{median}\NormalTok{((bike}\OperatorTok{$}\NormalTok{cnt)}\OperatorTok{^}\NormalTok{(}\DecValTok{1}\OperatorTok{/}\DecValTok{2}\NormalTok{)), }\DataTypeTok{col =} \StringTok{"red"}\NormalTok{, }\DataTypeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-12-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#determining workday vs weekday vs holiday}
+
+\KeywordTok{mean}\NormalTok{(rntDAT[}\KeywordTok{which}\NormalTok{(rntDAT}\OperatorTok{$}\NormalTok{weekday }\OperatorTok{%in%}\StringTok{ }\KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{6}\NormalTok{)),]}\OperatorTok{$}\NormalTok{cnt)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 4.554327
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{mean}\NormalTok{(rntDAT[}\KeywordTok{which}\NormalTok{(rntDAT}\OperatorTok{$}\NormalTok{weekday }\OperatorTok{%in%}\StringTok{ }\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{2}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{4}\NormalTok{,}\DecValTok{5}\NormalTok{)),]}\OperatorTok{$}\NormalTok{cnt)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 4.528829
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{summary}\NormalTok{(rntDAT}\OperatorTok{$}\NormalTok{cnt)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   0.000   3.689   4.956   4.536   5.638   6.884
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{sd}\NormalTok{(rntDAT}\OperatorTok{$}\NormalTok{cnt)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 1.486204
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#mnth vs season}
+\KeywordTok{boxplot}\NormalTok{(cnt }\OperatorTok{~}\StringTok{  }\NormalTok{season }\OperatorTok{+}\StringTok{ }\NormalTok{mnth , }\DataTypeTok{data =}\NormalTok{ bike)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-12-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#temp vs atemp}
+\KeywordTok{gpairs}\NormalTok{(bike[,}\KeywordTok{c}\NormalTok{(}\StringTok{"temp"}\NormalTok{,}\StringTok{"atemp"}\NormalTok{, }\StringTok{"hum"}\NormalTok{, }\StringTok{"windspeed"}\NormalTok{, }\StringTok{"weathersit"}\NormalTok{)])}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{Midterm2_files/figure-latex/unnamed-chunk-12-3.pdf}
+
+\end{document}

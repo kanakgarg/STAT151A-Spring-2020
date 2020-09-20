@@ -1,0 +1,970 @@
+---
+title: "Lab Final - fMRI Stat 215A, Spring 2020"
+author: "Kanak Garg"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+bibliography: bibliography.bib
+header-includes:
+   - \usepackage{float}
+   - \usepackage{gensymb}
+   - \usepackage{amsmath}
+output: 
+  pdf_document:
+    citation_package: natbib
+    number_sections: true
+---
+
+\setlength{\abovedisplayskip}{-3mm}
+\setlength{\belowdisplayskip}{1mm}
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  cache = FALSE)
+
+# load in useful packages
+#library(tidyverse)
+#library(R.utils)
+#library(ggpubr)
+#library(caret)
+#library(GGally)
+#library(irlba)
+#library(knitr)
+#library(glmnet)
+#library(reshape2)
+#library(ggdendro)
+#library(plotly)
+
+# load in all utility functions from R/ folder
+
+```
+
+# Introduction
+
+In neuroscience, modern advances in technology, such as functional magnetic resonance imaging (fMRI), have enabled researchers to tackle complex scientific questions, which were once thought impossible. For example, decoding brain activity was once thought to be an impossible endeavor, yet in recent years, neuroscientists have made significant progress in this area \citep{kay2008, nishimoto2011} with the help of emerging technologies and more granular data. Ultimately, if scientists are able to develop a general brain-reading device that could reconstruct a person's visual experience, the visual decoder would greatly improve our understanding of mental processes and how the brain represents sensory information. In this report, we will touch on this goal of brain decoding and analyze fMRI data, provided by the Gallant Lab of UC Berkeley, in order to predict the brain's responses to complex natural visual images. 
+
+# Data Description
+
+The dataset of interest was collected through an experiment performed by the Gallant lab, in which a subject was shown a sequence of natural images while being recorded by the fMRI machine. Each image was a $128 \times 128$ pixel gray-scale image, represented by a $128^2 = 16384$-length vector. A Gabor-transformation was later applied to these images, yielding a reduced $10921$-length vector representation of each image. Overall, the subject was shown $1870$ images. We reserve $120$ images for the test set to evaluate the performance of our final model, leaving $1750$ images for the training set.
+
+In this analysis, we focus on predicting fMRI responses for 20 voxels in the visual cortex of the brain. That is, given the Gabor-transformed $10921$-dimensional vector representation of each image, we aim to predict the $20$-dimensional fMRI response, where each dimension corresponds to a designated voxel.
+
+```{r load-data}
+
+# load in fmri data
+fmri_orig <- loadfMRIData("./data")
+#   loads four matrix objects:
+#   1) resp_dat: 1750 × 20; contains responses from the 20 voxels to 1750 
+#      images (responses of the training set)
+#   2) fit_feat: 1750 × 10921; contains the 1750 Gabor-transformed images 
+#      (features of the training set)
+#   3) val_feat: 120 × 10921; contains a separate validation set of 120 
+#      Gabor-transformed images (features of the testing set)
+#   4) loc_dat: 20 × 3; spatial location of the voxels (20 voxels × 3)
+
+```
+
+# Exploratory Data Analysis
+
+We begin our analysis with a brief visual exploration into the fMRI dataset. First, we consider the amount of variation in each predictor variable, i.e each Gabor-transformed feature. In Figure \ref{fig:vars}, we see that numerous features have zero (or negligible) variance. Since all (or almost all) of these feature measurements are the same, these features are unlikely to be predictive of the fMRI responses. Thus, we remove the features with variance less than $10^{-7}$. This reduces the number of features to $9785$. Note that we tried several different thresholds for variance filtering (e.g. $0, 10^{-7}, 10^{-4}$), but our modeling algorithms were robust to this preprocessing choice.
+
+```{r feature-variances, fig.align = "center", fig.width = 4.75, fig.height = 2, fig.cap="\\label{fig:vars} We plot the distribution of variances of each Gabor-transformed feature, that is, each column in the design matrix, and notice a high proportion of variances are exactly 0 or near 0.", fig.pos = "H"}
+
+# variance of each feature
+feat_vars <- data.frame(var = apply(fmri_orig$fit_feat, 2, var)) %>%
+  mutate(var_trans = log10(var), # log10 transformation
+         is_zero = var == 0) %>% # whether or not variance is 0
+  # set log(0) to -18 instead of -Inf
+  mutate(var_trans = ifelse(var_trans == -Inf, -18, var_trans)) 
+
+# plot variance of features
+ggplot(feat_vars) +
+  aes(x = var_trans, fill = is_zero) +
+  geom_histogram(color = "grey98", binwidth = 1) +
+  scale_x_continuous(breaks = c(-18, seq(from = -15, to = 0, by = 5)),
+                     labels = c(0, 
+                                expression(10^{-15}), expression(10^{-10}),
+                                expression(10^{-5}), expression(10^0))) +
+  scale_fill_manual(values = c("light green", "red"),
+                    labels = c("Non-zero Variance", "Zero Variance")) +
+  labs(fill = "", y = "Frequency", x = "Variance of Feature Measurements") +
+  myGGplotTheme(axis_title_size = rel(.7), axis_text_size = rel(.5),
+                legend_text_size = rel(.6))
+ 
+```
+
+```{r clean-data}
+
+# clean fmri data
+fmri_dat <- cleanfMRIData(fmri_orig)
+
+resp_dat <- fmri_dat$resp_dat
+fit_feat <- fmri_dat$fit_feat
+val_feat <- fmri_dat$val_feat
+loc_dat <- fmri_dat$loc_dat
+
+p <- ncol(fit_feat)
+```
+
+In Figures \ref{fig:resp_corr} and \ref{fig:feat_corr}, we begin to examine the relationships between features and fMRI responses through pairwise correlations. Figure \ref{fig:resp_corr} is a heatmap of the correlations between fMRI voxel responses and clearly shows that there is high correlation among certain voxels. Due to the high number of pixels, it is computational infeasible to create an analogous heatmap for the Gabor-transformed features, so in lieu, we plot the distribution of pairwise correlations among features in \ref{fig:feat_corr}. In this plot, we highlight the correlations between adjacent features in red and see that the correlation between adjacent features is much higher than the correlation between two arbitrary features. We will keep in mind these EDA findings when modeling and interpreting our findings.
+
+```{r resp_corr, fig.align = "center", fig.width = 7, fig.height = 3, fig.cap="\\label{fig:resp_corr} We provide a heatmap of the pairwise correlations between fMRI responses for different voxels. Here, the voxels are arranged according to the output of hierarchical clustering with Ward's linkage.", fig.pos = "H"}
+  
+# plot correlation heatmaps of voxels, clustered by hierarchcial clustering
+hc <- hclust(d = dist(t(resp_dat)), method = "ward.D")
+resp_corr <- cor(resp_dat)
+resp_corr <- resp_corr[hc$order, hc$order] # reorder by hierarchical clust.
+resp_corr_long <- melt(resp_corr) %>%
+  mutate(Voxelx = as.factor(Var1),
+         Voxely = as.factor(Var2)) %>%
+  mutate(Voxelx = factor(Voxelx, levels(Voxelx)[hc$order]),
+         Voxely = factor(Voxely, levels(Voxely)[hc$order]))
+
+# plot heatmap of corr
+plt_resp_corr <- ggplot(resp_corr_long) +
+  aes(x = Voxelx, y = Voxely, fill = value) +
+  geom_tile() +
+  scale_fill_viridis() +
+  labs(x = "Voxel", y = "", fill = "Correlation") +
+  myGGplotTheme(plot.margin = unit(c(0.3, 0.2, 0.2, -0.7), "cm"),
+                axis_text_size = rel(.6), legend_text_size = rel(.6))
+
+# plot dendrogram
+dend_resp_corr <- ggdendrogram(hc, rotate = T, theme_dendro = T, 
+                               labels = F, leaf_labels = F) + 
+  scale_y_reverse() +
+  theme(axis.text = element_text(color = "white"))
+
+grid.arrange(dend_resp_corr, plt_resp_corr, nrow = 1, ncol = 2, 
+             widths = c(.5, 1))
+
+```
+
+
+```{r feat-corr, eval = F}
+
+# compute correlations between pixel features (this takes a while)
+feat_corr <- cor(fit_feat)
+feat_corr[lower.tri(feat_corr)] <- NA
+feat_corr_long <- melt(feat_corr) %>%
+  na.omit() %>%
+  mutate(type = "All Correlations") %>%
+  select(value, type)
+feat_corr_adj <- data.frame(value = diag(feat_corr[-nrow(feat_corr), -1]),
+                            type = "Adjacent Correlations")
+plt_feat_corr_df <- rbind(feat_corr_long, feat_corr_adj)
+
+# plot distribution of feature correlations
+ggplot(plt_feat_corr_df) + 
+  aes(x = value, fill = type) +
+  geom_density(alpha = .5) +
+  scale_fill_manual(values = c("red", "light blue")) +
+  guides(fill = guide_legend(override.aes = list(alpha = .5))) +
+  labs(x = "Correlation", y = "Density", fill = "") +
+  myGGplotTheme(axis_title_size = rel(.9), axis_text_size = rel(.7), 
+                title_size = rel(1.05), legend_text_size = rel(.8))
+# -> screenshot as "./extra/feat_corr.png"
+
+```
+
+\begin{figure}[H]
+\centering
+\includegraphics[width =  1\linewidth]{./extra/feat_corr.png}
+\caption{We plot the density of all pairwise correlations between features in blue and the density of pairwise correlations between adjacent features in red.}
+\label{fig:feat_corr}
+\end{figure}
+
+# Modeling and Classification
+
+To predict the fMRI responses of the 20 voxels given the Gabor-transformed feature measurements, we will try the following regression models: (1) lasso regression; (2) ridge regression; (3) random forest.
+
+Before running these algorithms, we divide the 1750 images into a training ($60\%$), validation ($20\%$), and test ($20\%$) set. The training set consists of $1012$ images and is used to train the model (including selection of hyperparameters). The validation set consists of $378$ images and is used to estimate the prediction error to perform model selection. Finally, the test set consists of $360$ images and is used to obtain an unbiased estimate of the generalization error for our final chosen model.
+
+```{r train-test-split}
+set.seed(100) 
+
+# split data into training, validation, and test set
+split_idx <- sample(1:3, nrow(resp_dat), prob = c(.6, .2, .2), replace = T)
+
+# training data
+Xtr <- fit_feat[split_idx == 1, ]
+Ytr <- resp_dat[split_idx == 1, ]
+
+# validation data
+Xva <- fit_feat[split_idx == 2, ]
+Yva <- resp_dat[split_idx == 2, ]
+
+# test data
+Xts <- fit_feat[split_idx == 3, ]
+Yts <- resp_dat[split_idx == 3, ]
+
+# save the training/test split to run models on scf 
+# saveRDS(list(Xtr = Xtr, Ytr = Ytr,
+#              Xva = Xva, Yva = Yva,
+#              Xts = Xts, Yts = Yts),
+#         "./data/fMRIDataSplit.rds")
+
+```
+
+## LASSO
+
+If we let $\mathbf{X}$ denote the design matrix and $\mathbf{Y}_i$ the fMRI response of the $i^{th}$ voxel, lasso regression solves for $i = 1, \dots, 20,$
+\begin{align*}
+\hat{\boldsymbol{\beta}}^{\text{lasso}}_i = \text{argmin}_{\boldsymbol{\beta} \in \mathbb{R}^p} \: \: \lVert  \mathbf{Y}_i - \mathbf{X} \boldsymbol{\beta} \rVert_2^2 + \lambda_i \lVert \boldsymbol{\beta} \rVert_1,
+\end{align*}
+where $\lambda_i > 0$ is a tuning parameter. We refer to this as the individual lasso fits. (Note that in all of our penalized regression models, we centered and scaled $\mathbf{X}$ in order to avoid penalizing features unequally.)
+
+However, as discussed in the EDA, there is high correlation among certain groups of voxels. Thus, rather than fitting 20 separate lasso fits, it may be advantageous to \textit{share} information across lasso fits. One approach for sharing information between responses is to use a multiresponse lasso regression:
+\begin{align*}
+\hat{\mathbf{B}}^{\text{lasso}} = \text{argmin}_{\mathbf{B} \in \mathbb{R}^{p \times 20}} \: \: \lVert  \mathbf{Y} - \mathbf{X} \mathbf{B} \rVert_F^2 + \lambda \sum_{j=1}^{p} \lVert \mathbf{B}_{\cdot, j} \rVert_2.
+\end{align*}
+Here, we apply a grouped lasso penalty, which encourages groups of coefficients to either be all zeroes or all non-zeroes together. In this specific case, the multiresponse lasso encourages the same pixels to be selected for all 20 voxels. This is advantageous when responses are highly correlated and improves interpretability of the model. 
+
+```{r read-in-lasso-results}
+
+## RUN lassoFits.rds TO GET RESULTS
+
+# read in individual lasso fits - CV (standardized)
+lasso_cv_ind_fit <- list()
+for (voxel in 1:ncol(Ytr)) {
+  lasso_cv_ind_fit[[voxel]] <- readRDS(paste0("./extra/lasso_cv_ind",
+                                              voxel, "_std_fit.rds"))
+}
+
+# read in multiresponse lasso fit - CV (standardized)  
+lasso_cv_mgaus_fit <- readRDS("./extra/lasso_cv_mgaus_std_fit.rds")
+
+## RUN escvLassoFits.rds TO GET RESULTS
+
+# read in multiresponse lasso fit - ESCV (standardized)
+lasso_escv_mgaus_fit <- readRDS("./extra/lasso_escv_mgaussian_std_fit.rds")
+
+```
+
+To select the hyperparameters for both the individual lasso fits and the multiresponse lasso, we compared the following model selection criteria: 10-fold cross validation with the MSE metric, 10-fold cross-validation with the ES-CV metric, AIC, AICc, and BIC. For brevity however, we omit the ES-CV, AIC, AICc, and BIC selection procedures for the individual lasso fits. Figure \ref{fig:lasso_model_select} shows the error paths across different values of the penalty parameter $\lambda$ when using the various model selection procedures to fit the multiresponse Lasso.
+
+```{r lasso-model-select}
+
+# cv error df
+lasso_cv <- lasso_cv_mgaus_fit[c("lambda", "cvm", "cvsd")] %>%
+  do.call(cbind, .) %>%
+  as.data.frame() 
+
+# escv error df
+lasso_escv <- lasso_escv_mgaus_fit[c("lambdas", "escv_mean", "escv_se")] %>%
+  do.call(cbind, .) %>%
+  as.data.frame()
+
+# plot cv error
+cv_plt <- ggplot(lasso_cv) +
+  aes(x = lambda, y = cvm) +
+  geom_ribbon(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), fill = "grey80") +
+  geom_line(color = "red") +
+  scale_x_continuous(trans = "log10") +
+  geom_point(aes(x = lambda[which.min(cvm)], y = min(cvm)), data = lasso_cv,
+             shape = 8, color = "red") +
+  geom_text(aes(x = lambda[which.min(cvm)], y = min(cvm), 
+                label = round(lambda[which.min(cvm)], 3)), data = lasso_cv,
+            hjust = 0, nudge_x = 0.1, nudge_y = -0.35, color = "red", 
+            size = 2.5) + 
+  labs(x = expression(bold(lambda)), y = "CV Mean Squared Error",
+       title = "Multiresponse Lasso CV") +
+  myGGplotTheme(axis_title_size = rel(.7), axis_text_size = rel(.6), 
+                title_size = rel(.85), legend_text_size = rel(.6))
+
+# plot escv error
+escv_plt <- ggplot(lasso_escv) +
+  aes(x = lambdas, y = escv_mean) +
+  geom_ribbon(aes(ymin = escv_mean - escv_se, ymax = escv_mean + escv_se),
+              fill = "grey80") +
+  geom_line(color = "red") +
+  scale_x_continuous(trans = "log10") +
+  geom_point(aes(x = lambdas[which.min(escv_mean)], y = min(escv_mean)),
+             data = lasso_escv, shape = 8, color = "red") +
+  geom_text(aes(x = lambdas[which.min(escv_mean)], y = min(escv_mean), 
+                label = round(lambdas[which.min(escv_mean)], 3)), 
+            data = lasso_escv, size = 2.5,
+            hjust = 0, nudge_x = 0.01, nudge_y = -0.025, color = "red") + 
+  labs(x = expression(bold(lambda)), y = "ES-CV Error",
+       title = "Multiresponse Lasso ES-CV") +
+  myGGplotTheme(axis_title_size = rel(.7), axis_text_size = rel(.6), 
+                title_size = rel(.85), legend_text_size = rel(.6))
+
+```
+
+
+```{r lasso-info-crit}
+
+# compute aic, aicc, bic
+lasso_ic <- infoCriteria(fit = lasso_cv_mgaus_fit$glmnet.fit)
+# convert to long df
+lasso_ic_long <- gather(data = lasso_ic, key = "Criterion", value = "Score", 
+                        AIC, AICc, BIC, factor_key = T)
+ic_mins <- data.frame(lambda = 
+                        lasso_ic$lambda[apply(lasso_ic[,-1], 2, which.min)],
+                      ic = apply(lasso_ic[,-1], 2, min))
+
+# make aic, bic, aicc plots
+ic_plts <- list()
+for (ic in c("AIC", "AICc", "BIC")) {
+  lasso_ic_plt_df <- lasso_ic %>% rename(IC = ic)
+  ic_plts[[ic]] <- ggplot(lasso_ic_plt_df) +
+    aes(x = lambda, y = IC) +
+    geom_line(color = "red") +
+    scale_x_continuous(trans = "log10") +
+    labs(x = expression(bold(lambda)), y = ic,
+         title = paste0("Multiresponse Lasso ", ic)) +
+    geom_point(aes(x = lambda, y = ic), data = ic_mins[ic, ], 
+             color = "red", shape = 8) +
+    geom_text(aes(x = lambda, y = ic, label = round(lambda, 3)),
+              data = ic_mins[ic, ], size = 2.5, 
+              hjust = -.25, vjust = .65, color = "red") +
+    myGGplotTheme(axis_title_size = rel(.7), axis_text_size = rel(.6), 
+                title_size = rel(.85), legend_text_size = rel(.6))
+}
+
+```
+
+
+```{r lasso-model-select-plots, fig.align = "center", fig.width = 7, fig.height = 4.5, fig.cap="\\label{fig:lasso_model_select} We plot the error paths for a range of penalty parameters $\\lambda$ (on a log-scale) using different model selection procedures. The top left plot gives the cross-validation MSE. The top right plot gives the ES-CV error, and the bottom plots gives the information criteria paths. The selected $\\lambda$, i.e. the minimum value, is denoted by the asterick, and for the CV and ES-CV methods, we shade the area within one standard error of the mean.", fig.pos = "H"}
+
+# plot model selection criteria over range of lambdas
+grid.arrange(cv_plt, escv_plt, ic_plts[[1]], ic_plts[[2]], ic_plts[[3]],
+             layout_matrix = matrix(c(1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5),
+                                    nrow = 2, ncol = 6, byrow = T))
+
+```
+
+From Figure \ref{fig:lasso_model_select}, we see that different model selection procedures select very different tuning parameters $\lambda$. At one extreme, AIC selects $\lambda = 0.017$, corresponding to a very dense model while ES-CV selects $\lambda = 0.253$, corresponding to the most parsimonious model. This is expected since ES-CV encourages stability in the parameter space for potentially some loss in predictability while AIC tends to overfit and allows too many parameters when the number of samples is small. AICc corrects for this small sample size problem of AIC and selects a slightly larger tuning parameter value of $\lambda = 0.091$. BIC penalizes larger models even more heavily and hence selects an even larger tuning parameter $\lambda = 0.145$, and CV selects a similar tuning parameter as BIC with $\lambda = 0.174$. This stability across two model selection procedures may indicate that $\lambda \approx 0.17$ is a reasonable choice. However, if the goal is primarily interpretability of the model, it is perhaps more appropriate to use the ES-CV choice of $\lambda = 0.253$, which has similar predictive power as CV (see Table 1) while encouraging parsimony. We finally note that a major difference between CV/ES-CV and the information criteria procedures is that the information criteria are highly dependent on the underlying probabilistic model unlike CV and ES-CV. Consequently, if the model is misspecified, we should not rely heavily on the information criteria scores.
+
+
+
+```{r lasso-predictions}
+
+# initialize list of predictions
+lasso_pred <- list()
+
+# make predictions: multiresponse - CV
+lasso_pred[["multiresponse_cv"]] <- predict(
+  lasso_cv_mgaus_fit, newx = as.matrix(Xva),
+  s = lasso_cv_mgaus_fit$lambda.min) %>%
+  drop() # drop third dimension; for uniform formatting
+
+# make predictions: multiresponse - ESCV
+lasso_pred[["multiresponse_escv"]] <- predict(
+  lasso_cv_mgaus_fit, newx = as.matrix(Xva),
+  s = lasso_escv$lambdas[which.min(lasso_escv$escv_mean)]) %>%
+  drop() # drop third dimension; for uniform formatting
+
+# make predictions: multiresponse - AIC
+lasso_pred[["multiresponse_aic"]] <- predict(
+  lasso_cv_mgaus_fit, newx = as.matrix(Xva),
+  s = ic_mins[rownames(ic_mins) == "AIC", "lambda"]) %>%
+  drop() # drop third dimension; for uniform formatting
+
+# make predictions: multiresponse - AICc
+lasso_pred[["multiresponse_aicc"]] <- predict(
+  lasso_cv_mgaus_fit, newx = as.matrix(Xva),
+  s = ic_mins[rownames(ic_mins) == "AICc", "lambda"]) %>%
+  drop() # drop third dimension; for uniform formatting
+
+# make predictions: multiresponse - bic
+lasso_pred[["multiresponse_bic"]] <- predict(
+  lasso_cv_mgaus_fit, newx = as.matrix(Xva),
+  s = ic_mins[rownames(ic_mins) == "BIC", "lambda"]) %>%
+  drop() # drop third dimension; for uniform formatting
+
+# make predictions: individual fits - CV
+lasso_pred[["individual_cv"]] <- matrix(NA, nrow = nrow(Yva), ncol = ncol(Yva))
+for (voxel in 1:ncol(Yva)) {
+  # standardized
+  lasso_pred[["individual_cv"]][, voxel] <- predict(
+    lasso_cv_ind_fit[[voxel]], newx = as.matrix(Xva),
+    s = lasso_cv_ind_fit[[voxel]]$lambda.min)
+}
+
+```
+
+
+To concretely compare the performance of the individual Lasso fits and the multiresponse Lasso using different model selection criteria, we compute (1) the MSE and (2) the correlation between the fitted values and the observed values for the 378 images in the validation set. These validation results are provided in Table 1, showing that the multiresponse Lasso with 10-fold CV is the best model in terms of the correlation metric. However, we note that the multiresponse Lasso with 10-fold ES-CV gives similar results and is arguably more appropriate if one desires a simpler model. 
+
+It is also interesting to point out that the multiresponse lasso only slightly outperforms the 20 individual lasso fits. This suggests that while sharing information between voxel responses can improve the prediction results, it only does so by a very small amount in this case. We will see in the next section a more effective method for improving our prediction accuracy. Thus, we view the main advantage of the multiresponse lasso as interpretability. Here, the multiresponse lasso with CV selected the same 235 features for predicting all 20 voxel responses while the 20 separate lassos with CV selected 693 different features across the 20 fits.
+
+```{r lasso-eval}
+
+# compute MSE
+lasso_mse <- evalMSE(pred_ls = lasso_pred, Yts = Yva) %>% as.data.frame()
+
+# compute correlation metric
+lasso_corr <- evalCorr(pred_ls = lasso_pred, Yts = Yva) %>% as.data.frame()
+
+```
+
+```{r lasso-number-features}
+
+# find index of features used in each model
+lasso_feats <- list()
+
+# selected features: multiresponse - CV
+lambda_idx <- which(lasso_cv_mgaus_fit$glmnet.fit$lambda ==
+                      lasso_cv_mgaus_fit$lambda.min) # optimal lambda index
+lasso_feats[["multiresponse_cv"]] <-
+  lapply(coef(lasso_cv_mgaus_fit$glmnet.fit), 
+         FUN = function(X) {
+           coef <- as.matrix(X)[, lambda_idx]
+           feat_idx <- which(coef != 0)
+           return(feat_idx)
+         }) %>%
+  do.call(c, .) %>% # concatenate lists into a vector
+  unique() # only want the unique features
+
+# selected features: multiresponse - ESCV
+lambda_idx <- min(which(lasso_cv_mgaus_fit$glmnet.fit$lambda <=
+                          lasso_escv_mgaus_fit$best_lambda))
+lasso_feats[["multiresponse_escv"]] <-
+  lapply(coef(lasso_cv_mgaus_fit$glmnet.fit), 
+         FUN = function(X) {
+           coef <- as.matrix(X)[, lambda_idx]
+           feat_idx <- which(coef != 0)
+           return(feat_idx)
+         }) %>%
+  do.call(c, .) %>% # concatenate lists into a vector
+  unique() # only want the unique features
+
+# selected features: multiresponse - AIC
+lambda_idx <- which(lasso_cv_mgaus_fit$glmnet.fit$lambda == 
+                      ic_mins[rownames(ic_mins) == "AIC", "lambda"])
+lasso_feats[["multiresponse_aic"]] <-
+  lapply(coef(lasso_cv_mgaus_fit$glmnet.fit), 
+         FUN = function(X) {
+           coef <- as.matrix(X)[, lambda_idx]
+           feat_idx <- which(coef != 0)
+           return(feat_idx)
+         }) %>%
+  do.call(c, .) %>% # concatenate lists into a vector
+  unique() # only want the unique features
+
+# selected features: multiresponse - AICc
+lambda_idx <- which(lasso_cv_mgaus_fit$glmnet.fit$lambda == 
+                      ic_mins[rownames(ic_mins) == "AICc", "lambda"])
+lasso_feats[["multiresponse_aicc"]] <-
+  lapply(coef(lasso_cv_mgaus_fit$glmnet.fit), 
+         FUN = function(X) {
+           coef <- as.matrix(X)[, lambda_idx]
+           feat_idx <- which(coef != 0)
+           return(feat_idx)
+         }) %>%
+  do.call(c, .) %>% # concatenate lists into a vector
+  unique() # only want the unique features
+
+# selected features: multiresponse - BIC
+lambda_idx <- which(lasso_cv_mgaus_fit$glmnet.fit$lambda == 
+                      ic_mins[rownames(ic_mins) == "BIC", "lambda"])
+lasso_feats[["multiresponse_bic"]] <-
+  lapply(coef(lasso_cv_mgaus_fit$glmnet.fit), 
+         FUN = function(X) {
+           coef <- as.matrix(X)[, lambda_idx]
+           feat_idx <- which(coef != 0)
+           return(feat_idx)
+         }) %>%
+  do.call(c, .) %>% # concatenate lists into a vector
+  unique() # only want the unique features
+
+# selected features: individual fits - CV
+lasso_feats[["individual_cv"]] <- list()
+for (voxel in 1:ncol(Ytr)) {
+  lambda_idx <- which(lasso_cv_ind_fit[[voxel]]$glmnet.fit$lambda == 
+                        lasso_cv_ind_fit[[voxel]]$lambda.min)
+  coef <- as.matrix(coef(lasso_cv_ind_fit[[voxel]]$glmnet.fit))[, lambda_idx]
+  lasso_feats[["individual_cv"]][[voxel]] <- which(coef != 0)
+}
+lasso_feats[["individual_cv"]] <- do.call(c, 
+                                          lasso_feats[["individual_cv"]]) %>%
+  unique() # only want the unique features
+
+# count number of unique features used in each model
+lasso_num_feat <- sapply(lasso_feats, length)
+
+```
+
+
+```{r lasso-results, results = "asis"}
+
+# overall prediction results: mse, correlation, and number of features
+lasso_total_evals <- data.frame(Method = c(rep("Multiresponse Lasso", 5),
+                                           "20 Individual Lassos"),
+                                Criteria = c("CV", "ESCV", "AIC", 
+                                             "AICc", "BIC", "CV"),
+                                MSE = lasso_mse$total_mse,
+                                Corr = lasso_corr$total_corr,
+                                Features = lasso_num_feat) %>%
+  rename(`Selection Criteria` = Criteria,
+         `# Features` = Features,
+         `Validation MSE` = MSE,
+         `Validation Correlation` = Corr)
+
+kable(lasso_total_evals, digits = 4, align = "ccccc",
+      caption = "Evaluation of lasso fits with different model selection procedures. Lower validation MSE and higher correlation indicates better prediction accuracy. The rightmost column gives the number of unique features used to predict the 20 voxel responses in each model.", row.names = F)
+
+
+```
+
+
+## Other Models
+
+In addition to the lasso models discussed in the previous section, we also tried fitting the following models:
+\begin{enumerate}
+\item Ridge regression: multiresponse and 20 individual ridge fits 
+\begin{itemize}
+\item Note: we tried using various model selection criteria, but for brevity, we only show the results from the model with the highest predictive power, which was CV in this case.
+\end{itemize}
+\item 20 individual random forest fits
+\item Grouped multiresponse lasso fits: We clustered the voxels into two groups using hierarchical clustering with Ward's linkage; then for each group of voxels, we fit a multiresponse lasso model. Rather than encouraging all 20 voxels to select the same features, this model allows the different clusters of voxels to be modeled separately while still encouraging similarities within each cluster of voxels.
+\end{enumerate}
+
+In Table 2, we report the prediction accuracy of the above models along with the best lasso model from the previous section. We observe that the random forest outperforms the competing regularized linear regression models in terms of both MSE and correlation. The large difference between the regularized regression and the random forest results indicates that a non-linear model may be more appropriate for this fMRI data. Even when we try more sophisticated lasso models such as the grouped multiresponse lasso, which exploit the inherent multi-task, correlated structure of the fMRI data, it appears that the linear models hit a limit in terms of predictive power. On the other hand, fitting an out-of-the-box random forest model for each voxel response gave a lower MSE and higher correlation than the linear models.
+
+```{r ridge}
+
+## RUN ridgeFits.rds FILE TO GET RESULTS
+
+# initialize list of predictions
+preds <- list()
+
+# multiresponse ridge predictions
+preds[["multiresponse_ridge"]] <- readRDS("./extra/ridge_cv_mgaus_preds.rds")
+
+# individual ridge predictions
+preds[["individual_ridge"]] <- readRDS("./extra/ridge_cv_ind_preds.rds")
+
+```
+
+
+```{r rf}
+
+## RUN randomForestFits.rds FILE TO GET RESULTS
+
+# read in individual rf fits
+rf_fit <- list()
+for (voxel in 1:ncol(Ytr)) {
+  rf_fit[[voxel]] <- readRDS(paste0("./extra/rf_voxel",
+                                    voxel, "_fit.rds"))
+}
+
+# individual rf predictions
+preds[["individual_rf"]] <- matrix(NA, nrow = nrow(Yva), ncol = ncol(Yva))
+for (voxel in 1:ncol(Yva)) {
+  preds[["individual_rf"]][, voxel] <- predict(rf_fit[[voxel]], newdata = Xva)
+}
+
+```
+
+
+```{r grouped-multiresponse-lassos}
+
+## RUN groupedMultiresponseLassoFits.rds FILE TO GET RESULTS
+preds[["grlasso"]] <- readRDS("./extra/lasso_cv_mgaussian_group_preds.rds")
+
+```
+
+
+```{r evaluate-predictions, results = "asis"}
+
+# compute MSE
+mses <- evalMSE(pred_ls = preds, Yts = Yva) %>% as.data.frame()
+
+# compute correlation
+corrs <- evalCorr(pred_ls = preds, Yts = Yva) %>% as.data.frame()
+
+# concatenate with the previous lasso results
+mses <- rbind(lasso_mse[rownames(lasso_mse) == "multiresponse_cv", ],
+              mses) 
+corrs <- rbind(lasso_corr[rownames(lasso_corr) == "multiresponse_cv", ],
+               corrs)
+
+# overall prediction results: mse and correlation metric
+total_evals <- data.frame(Method = c("Multiresponse Lasso",
+                                     "Multiresponse Ridge",
+                                     "20 Individual Ridges",
+                                     "20 Individual RFs",
+                                     "Grouped Multiresponse Lassos"), 
+                          MSE = mses$total_mse,
+                          Correlation = corrs$total_corr) %>%
+  arrange(MSE) %>%
+  rename(`Validation MSE` = MSE, `Validation Correlation` = Correlation)
+kable(total_evals, digits = 4, 
+      caption = "Evaluation of various model fits using the validation set. Lower validation MSE and higher correlation indicates better prediction accuracy. All tuning parameters were selected using CV.")
+
+```
+
+
+# Model Diagnostics
+
+Though the prediction results appear promising, we must also check model diagnostics to validate whether or not the model is an appropriate fit for the data. In this analysis, we focus on the multiresponse lasso (with CV) and the random forest models.
+
+We begin assessing the fit by plotting the fitted values against the observed values for the multiresponse lasso and random forest fits in Figure \ref{fig:pred_v_obs}. Here, the red line corresponds to the line of perfect fit, so we see that regardless of the voxel, both models are biased. However, we know that these models intentionally introduce bias for a reduction in variance and thereby reducing the overall MSE. 
+
+From Figure \ref{fig:pred_v_obs}, we also gain insights into why and when the random forest performs better than the multiresponse lasso. In particular, we see that when the observed fMRI responses are lower (e.g. $\leq -1.5$), a substantial proportion of the random forest predictions are closer to the red line, that is, more accurate, than the multiresponse lasso predictions.
+
+```{r model-fits, fig.align = "center", fig.width = 7.5, fig.height = 3, fig.cap="\\label{fig:pred_v_obs} For the multiresponse lasso and the random forest models, we plot the fitted values against the observed fMRI responses for all 20 voxels. The red line corresponds to the line of perfect fit.", fig.pos = "H"}
+
+# make data.frame with fitted and observed values for multiresponse lasso, rf
+Yva_long <- melt(Yva %>% mutate(id = rownames(.)), 
+                 id.vars = "id", factorsAsStrings = T)
+colnames(Yva_long) <- c("Image", "Voxel", "Observed")
+colnames(lasso_pred$multiresponse_cv) <- 1:20 # reformat voxel names
+lasso_pred_long <- melt(lasso_pred$multiresponse_cv)
+rf_pred_long <- melt(preds$individual_rf)
+fitted_df <- data.frame(Yva_long, 
+                        Lasso = lasso_pred_long$value,
+                        `Random Forest` = rf_pred_long$value) %>% 
+  melt(id = c("Image", "Voxel", "Observed"))
+levels(fitted_df$variable) <- c("Multiresponse Lasso", "Random Forest")
+
+# plot fitted values vs observed values for multiresponse lasso and rf
+ggplot(fitted_df) +
+  aes(x = Observed, y = value, color = as.numeric(Voxel)) +
+  facet_grid(~variable) +
+  geom_point(alpha = .3, size = .01) +
+  geom_abline(color = "red") + # plot y = x, perfect fit
+  labs(x = "Observed fMRI Response", y = "Fitted Value", color = "Voxel") + 
+  myGGplotTheme(axis_title_size = rel(.9), axis_text_size = rel(.7), 
+                legend_title_size = rel(.9), legend_text_size = rel(.7),
+                strip_text_size = rel(.9)) +
+  myGGplotColor(discrete = F)
+
+```
+
+There are also some visual indications in the above plot that suggest some voxels are easier to predict than others. To make this more evident, we plot the correlation metric for each individual voxel using the validation set in Figure \ref{fig:voxel_mse}. For most voxels, the random forest yielded a higher correlation than the multiresponse lasso. Voxels 13 and 16, however, are noticeably different in that the multiresponse lasso performed better than the random forest. Looking back at Figure \ref{fig:resp_corr} from our EDA, we recall that voxels 13 and 16 had low correlations with the other voxels but were clustered together in the hierarchical clustering. This may explain why the integrative multiresponse lasso performs better than separate random forest fits for these voxels. Furthermore, when examining the location of the voxels with lower predictive power, we notice in Figure \ref{fig:loc} that they line the outer edge of the region of interest, suggesting that this region of the brain is challenging to decode.
+
+```{r eval-voxel, fig.align = "center", fig.width = 7.5, fig.height = 2.75, fig.cap="\\label{fig:voxel_mse} For the multiresponse lasso (with CV) and the random forest, we plot the validation correlation metric for each individual voxel.", fig.pos = "H"}
+
+plt_corrs <- corrs[c("multiresponse_cv", "individual_rf"), -1] %>%
+  mutate(Method = as.factor(rownames(.))) %>%
+  melt()
+levels(plt_corrs$Method) <- c("Random Forest", "Multiresponse Lasso")
+
+# plot validation correlation for each voxel
+ggplot(plt_corrs) +
+  aes(x = variable, y = value, fill = Method) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Voxel", y = "Validation Correlation") +
+  myGGplotTheme(axis_title_size = rel(.85), axis_text_size = rel(.65), 
+                legend_title_size = rel(.85), legend_text_size = rel(.65)) +
+  myGGplotFill(discrete = T)
+
+```
+
+```{r location}
+
+# find voxels with low correlations
+low_voxels <- plt_corrs %>% 
+  filter(Method == "Random Forest") %>%
+  mutate(color = value < 0.4)
+
+# plot location of voxels
+ax <- list(title = "",
+           showticklabels = FALSE)
+loc_plt <- plot_ly(loc_dat, x = ~x, y = ~y, z = ~z, color = low_voxels$color, 
+        colors = c("black", "red"), text = rownames(loc_dat), 
+        mode = "text", type = "scatter3d",
+        textfont = list(size = 16)) %>%
+  layout(scene = list(xaxis = ax, yaxis = ax, zaxis = ax),
+         showlegend = F) # -> screenshot as "./extra/location_image.png"
+
+```
+
+\begin{figure}[H]
+\centering
+\includegraphics[width =  .35\linewidth]{./extra/location.png}
+\caption{We provide a visual illustration of the location of the voxels in the brain. We highlight in red the voxels with low (< 0.4) correlation scores on the validation set.}
+\label{fig:loc}
+\end{figure}
+
+For a more refined analysis, we next investigate the residual errors of specific voxels. In particular, we will examine the random forest residuals of voxel 2 and 16 as they have the highest and lowest correlations, respectively. In Figure \ref{fig:resid}, there is a trend that large residuals (in magnitude) tend to be associated with large observed fMRI responses (in magnitude). This is a bi-product of the bias introduced by the random forest model. We also see that almost all predictions are within 2.5 units of the observed fMRI response value. The images with residuals greater than 2.5 in magnitude might be outliers, but further analysis is needed to determine this. In particular, we plot the four images with the largest residuals in Figure \ref{fig:outliers}. A shared trait among these images is the high repetitiveness (e.g. the repeated windows on the buildings, the repeated people, and the repeated wave structures), but it is unclear whether this characteristic is ``strange'' enough to imply that the image is an outlier. Rather, using Figure \ref{fig:resid}, it seems that the image with the observed fMRI response near 5 (which corresponds to the leftmost image in Figure \ref{fig:outliers}) is the only outlier in the data shown.
+
+```{r resid-plots, fig.align = "center", fig.width = 6, fig.height = 2.5, fig.cap="\\label{fig:resid} For the random forest, we plot the residuals for voxels 2 and 16. We emphasize the images with residuals greater than 2.5 (in magnitude) in red.", fig.pos = "H"}
+
+# compute residuals
+resid_df <- fitted_df %>%
+  filter(Voxel %in% c(2, 16),
+         variable == "Random Forest") %>%
+  mutate(Residual = value - Observed)
+
+# plot residuals for voxels 2 and 16
+my_color <- ifelse(abs(resid_df$Residual) > 2.5, "red", "grey65")
+my_shape <- ifelse(abs(resid_df$Residual) > 2.5, 8, 16)
+resid_df_plt <- resid_df
+levels(resid_df_plt$Voxel) <- paste0("Voxel ", levels(resid_df_plt$Voxel))
+ggplot(resid_df_plt) +
+  aes(x = Observed, y = Residual) +
+  facet_grid(~Voxel) +
+  geom_point(alpha = 1, size = .25, color = my_color, shape = my_shape) +
+  labs(x = "Observed fMRI Response", y = "Residual") + 
+  myGGplotTheme(axis_title_size = rel(.9), axis_text_size = rel(.7), 
+                legend_title_size = rel(.9), legend_text_size = rel(.7),
+                strip_text_size = rel(.9)) +
+  myGGplotColor(discrete = T)
+
+```
+
+```{r outliers, fig.align = "center", fig.width = 7.5, fig.height = 3, fig.cap="\\label{fig:outliers} We plot the four images with the largest residuals (in magnitude) from the random forest fit on Voxel 16.", fig.pos = "H"}
+
+# images with residuals larger than 2.5 in magnitude
+outlier_images <- resid_df %>%
+  filter(abs(Residual) > 2.5) %>%
+  arrange(abs(Residual)) %>% # order them by the residual (large to small)
+  select(Image)
+
+# plot outlier candidates
+par(mfrow = c(1, 4), mai = c(1, 0.1, 0.1, 0.1))
+for (image in outlier_images$Image[1:4]) {
+  img <- readImage(image)
+  image(img, col = gray((1:500) / 501),
+        xaxt = 'n', yaxt = 'n', ann = FALSE)
+}
+
+```
+
+Finally, we conclude our assessment of the model fit by evaluating the stability of the multiresponse lasso (CV) and the random forest models. In order to evaluate the stability, we obtain 100 bootstrap samples of the training data and fit the model on each bootstrap sample. Then, for each fitted bootstrap model, we evaluate measures of the prediction stability and the model stability, as shown in Figure \ref{fig:stability}. In the left and middle columns, we plot the distribution of correlation and MSE metrics for the 100 bootstrap samples to visually inspect the prediction stability. In the right column, we plot the distribution of feature (in)stability scores to inspect the model stability. For the lasso, we define the feature stability score to be the number of times the feature appeared in the lasso model with a non-zero coefficient divided by the total number of bootstraps $B$, and for the random forest, we define the feature instability score to be the sample standard deviation of the $B$ feature importance scores from the random forest. Due to computational constraints, we only analyzed the stability for a couple voxels in the random forest model.
+
+```{r read-in-stability}
+# RUN lassoStability.R and randomForestStability.R for stability results
+
+B <- 100 # number of bootstrap samples
+
+# read in lassoStability results
+lasso_boots_preds <- readRDS("./extra/lasso_cv_mgaus_std_boot_preds.rds")
+lasso_boots_feats <- readRDS("./extra/lasso_cv_mgaus_std_boot_feats.rds")
+
+# read in randomForestStability results
+rf_boots_preds_ls <- list("2" = readRDS("./extra/rf_voxel2_boot_preds.rds"),
+                          "16" = readRDS("./extra/rf_voxel16_boot_preds.rds"))
+rf_boots_feats_ls <- list("2" = readRDS("./extra/rf_voxel2_boot_feats.rds"),
+                          "16" = readRDS("./extra/rf_voxel16_boot_feats.rds"))
+
+```
+
+
+```{r stability-plots, fig.align = "center", fig.width = 7.5, fig.height = 7, fig.cap="\\label{fig:stability} We plot the distribution of prediction stability and model stability metrics across 100 bootstrap samples of the training data. The left column gives the distribution of correlation scores. The middle column shows the distribution of MSEs, and the right column shows the distribution of feature (in)stability scores. The green represents the multiresponse lasso while the orange indicates the random forest model.", fig.pos = "H"}
+
+# initialize list to store plots; also initialize pointer
+plt_ls <- list(); ptr <- 1
+
+# evaluate correlation and mse stability
+lasso_stab_corr <- evalCorr(pred_ls = lasso_boots_preds, Yts = Yva)[, 1]
+lasso_stab_mse <- evalMSE(pred_ls = lasso_boots_preds, Yts = Yva)[, 1]
+
+# histogram of correlations for lasso bootstrap samples
+plt_ls[[ptr]] <- plotHistogram(data.frame(Correlation = lasso_stab_corr),
+                               x = "Correlation") + 
+  labs(title = "Multiresponse Lasso")
+ptr <- ptr + 1
+
+# histogram of mses for lasso bootstrap samples
+plt_ls[[ptr]] <- plotHistogram(data = data.frame(MSE = lasso_stab_mse),
+                               x = "MSE") + labs(title = "")
+ptr <- ptr + 1
+
+# compute stability scores
+lasso_stab_score <- apply(lasso_boots_feats, 1, 
+                          FUN = function(X) {return(sum(X != 0))}) / B
+
+# histogram of stability scores
+plt_ls[[ptr]] <- plotHistogram(data = data.frame(stability = lasso_stab_score),
+                               x = "stability") +
+  labs(x = "Feature Stability Score", title = "")
+ptr <- ptr + 1
+
+# repeat for random forest fits (voxels = 2, 16)
+for (voxel in c("2", "16")) {
+  rf_boots_preds <- apply(rf_boots_preds_ls[[voxel]], 2, list) %>%
+    lapply(., FUN = function(X) {return(as.matrix(X[[1]]))})
+  rf_boots_feats <- rf_boots_feats_ls[[voxel]]
+  
+  # evaluate correlation and mse stability
+  rf_stab_corr <- evalCorr(pred_ls = rf_boots_preds, 
+                           Yts = as.matrix(Yva[, voxel]))[, 1]
+  rf_stab_mse <- evalMSE(pred_ls = rf_boots_preds, 
+                         Yts = as.matrix(Yva[, voxel]))[, 1]
+  
+  # histogram of correlations for rf bootstrap samples
+  plt_ls[[ptr]] <- plotHistogram(data.frame(Correlation = rf_stab_corr),
+                                 x = "Correlation", fill = "orange2") +
+    labs(title = paste0("Random Forest (Voxel ", voxel, ")"))
+  ptr <- ptr + 1
+  
+  # histogram of mses for rf bootstrap samples
+  plt_ls[[ptr]] <- plotHistogram(data = data.frame(MSE = rf_stab_mse),
+                                 x = "MSE", fill = "orange2") + 
+    labs(title = "")
+  ptr <- ptr + 1
+  
+  # compute stability scores (i.e. sd of feature importances)
+  rf_stab_score <- apply(rf_boots_feats, 1,
+                         FUN = function(X) {return(sd(X))})
+  # histogram of stability scores
+  plt_ls[[ptr]] <- plotHistogram(data = data.frame(stability = rf_stab_score),
+                                 x = "stability", fill = "orange2") +
+    labs(x = "Feature Instability Score", title = "")
+  ptr <- ptr + 1
+  
+}
+
+ggarrange(plotlist = plt_ls, ncol = 3, nrow = length(plt_ls) / 3)
+
+```
+
+From Figure \ref{fig:stability}, we see that stability can depend on the voxel. For instance, in the random forest model, the correlation scores across the bootstrap samples have a wide spread for voxel 16 but a tighter spread for voxel 2. The correlation might even be negative for voxel 16, which is not encouraging. However, besides this, it seems that the random forest model is overall more stable than the lasso model. We conclude this for a couple reasons: (1) the range of MSEs for the random forest is approximately 0.05, which is much smaller than the range of the lasso MSEs ($> 0.1$), and (2) the distribution of the lasso feature stability scores have a large amount of mass ($\approx 30\%$ of the features) in the mid-range while most of the features in the random forest have small instability scores ($< 0.1$). In fact, less than $1\%$ of the features are selected in more than $90\%$ of the lasso bootstrap models, and only two features (index 1, 6, and 1191) are selected by all the lasso bootstrap models. The one advantage to the lasso however is that the lasso enforces sparsity in the feature space while the random forest only provides importance scores and does not explicitly perform feature selection. 
+
+# Interpretation
+
+Now, to interpret our results, we examine and compare the selected features in our models. In particular, we look at various lasso models and the random forest and extract the top 10 features, as measured by the coefficient magnitude in the lasso and the increase in node purity (i.e. feature importance score) in the random forest. We plot these top 10 selected features in Figure \ref{fig:top10}, where panel A compares various models for predicting voxel 2, and panel B compares the random forest models for two different voxels. In panel A, we see some overlap $(\approx 50\%)$ among the top selected features between the different lasso models. However, there is no overlap between the lasso models and the random forest. We hypothesize that the instability of selected features between the random forest and the lasso is due to multicollinearity among the features (see the correlation between adjacent features in Figure \ref{fig:feat_corr}). It is well-known that the lasso performs sub-optimally in the presence of multicollinearity, and this multicollinearity issue is illustrated here by the fact that the random forest selected three adjacent highly-correlated pixels (namely, 3561-3563) while the lasso did not select any of these pixels nor any other pair of adjacent pixels.
+
+Aside from the differences between models, there are also differences within one model family when predicting two different voxels. In Figure \ref{fig:top10}B, we see that the top features used to predict voxel 16's response are completely disjoint from the top features used to predict voxel 2's response. This suggests that not all voxels respond to stimuli in the same way, and perhaps, one may even take one step further and posit that these voxels serve different functions for the brain.
+
+```{r top-feats, fig.align = "center", fig.width = 7.5, fig.height = 5, fig.cap="\\label{fig:top10} We plot the top 10 features selected by each model. More specifically, for the lasso models, we selected the 10 features with the largest coefficients in magnitude, and for the random forest, we selected the 10 features with the largest feature importance score. (A) compares different models for predicting voxel 2. (B) compares the random forest models for prediction voxel 2 vs. voxel 16.", fig.pos = "H"}
+
+# get top 10 features for each model
+top_feats <- list()
+top_feats_table <- list()
+voxel <- 2
+
+# random forest
+coefs <- rf_fit[[voxel]]$finalModel$importance %>% drop() %>%
+  data.frame(coefs = ., id = 1:p)
+top10 <- coefs %>%
+  arrange(-abs(coefs)) %>%
+  select(id) %>%
+  slice(1:10)
+top_feats[["random_forest"]] <- 1:p %in% top10$id
+
+# multiresponse lasso (CV)
+lambda_idx <- which(lasso_cv_mgaus_fit$glmnet.fit$lambda ==
+                    lasso_cv_mgaus_fit$lambda.min) # optimal lambda index
+coefs <- as.matrix(lasso_cv_mgaus_fit$glmnet.fit$
+                     beta[[voxel]])[, lambda_idx] %>%
+  data.frame(coefs = ., id = 1:p)
+top10 <- coefs %>%
+  arrange(-abs(coefs)) %>%
+  select(id) %>%
+  slice(1:10)
+top_feats[["multiresponse_lasso_cv"]] <- 1:p %in% top10$id
+
+# multiresponse lasso (ESCV)
+lambda_idx <- min(which(lasso_cv_mgaus_fit$glmnet.fit$lambda <=
+                          lasso_escv_mgaus_fit$best_lambda))
+coefs <- as.matrix(lasso_cv_mgaus_fit$glmnet.fit$
+                     beta[[voxel]])[, lambda_idx] %>%
+  data.frame(coefs = ., id = 1:p)
+top10 <- coefs %>%
+  arrange(-abs(coefs)) %>%
+  select(id) %>%
+  slice(1:10)
+top_feats[["multiresponse_lasso_escv"]] <- 1:p %in% top10$id
+  
+# individual lasso CV
+lambda_idx <- which(lasso_cv_ind_fit[[voxel]]$glmnet.fit$lambda == 
+                      lasso_cv_ind_fit[[voxel]]$lambda.min)
+coefs <- as.matrix(lasso_cv_ind_fit[[voxel]]$
+                     glmnet.fit$beta)[, lambda_idx] %>%
+  data.frame(coefs = ., id = 1:p)
+top10 <- coefs %>%
+  arrange(-abs(coefs)) %>%
+  select(id) %>%
+  slice(1:10)
+top_feats[["individual_lasso_cv"]] <- 1:p %in% top10$id
+
+# random forest (voxel 16)
+coefs <- rf_fit[[16]]$finalModel$importance %>% drop() %>%
+  data.frame(coefs = ., id = 1:p)
+top10 <- coefs %>%
+  arrange(-abs(coefs)) %>%
+  select(id) %>%
+  slice(1:10)
+top_feats[["random_forest16"]] <- 1:p %in% top10$id
+
+# summarize top features in a df
+top_feats_table <- do.call(rbind, top_feats[1:4])
+rownames(top_feats_table) <- c("Random Forest",
+                               "Multiresponse Lasso (CV)",
+                               "Multiresponse Lasso (ESCV)",
+                               "Individual Lasso (CV)")
+colnames(top_feats_table) <- 1:p
+
+# format to plot heatmap of selected variables
+keep_idx <- which(apply(top_feats_table, 2, sum) != 0)
+top_feats_long <- top_feats_table[, keep_idx] %>% melt()
+
+# plot selected variables for different models (Voxel 2)
+top_feats_plt <- ggplot(top_feats_long) +
+  aes(x = as.factor(Var2), y = Var1, fill = value) +
+  geom_tile(color = "grey98", width = .99) +
+  labs(x = "Feature Index", y = "", fill = "Top 10",
+       title = "Voxel 2 Models") +
+  scale_fill_manual(values = c("grey70", "navy"), 
+                    labels = c("False", "True")) +
+  myGGplotTheme(axis_title_size = rel(.85), title_size = rel(1),
+                legend_title_size = rel(.85), legend_text_size = rel(.7)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   size = rel(.6)),
+        axis.text.y = element_text(size = rel(.75))) 
+
+# now compare voxel 2 and voxel 16 for random forest
+top_feats_table <- do.call(rbind, top_feats[c(1, 5)])
+rownames(top_feats_table) <- c("Voxel 2", "Voxel 16")
+colnames(top_feats_table) <- 1:p
+
+# format to plot heatmap of selected variables
+keep_idx <- which(apply(top_feats_table, 2, sum) != 0)
+top_feats_long <- top_feats_table[, keep_idx] %>% melt()
+
+top_feats_plt2 <- ggplot(top_feats_long) +
+  aes(x = as.factor(Var2), y = Var1, fill = value) +
+  geom_tile(color = "grey98", width = .99) +
+  labs(x = "Feature Index", y = "", fill = "Top 10", 
+       title = "Random Forest Models") +
+  scale_fill_manual(values = c("grey70", "navy"), 
+                    labels = c("False", "True")) +
+    myGGplotTheme(axis_title_size = rel(.85), title_size = rel(1),
+                  legend_title_size = rel(.85), legend_text_size = rel(.7)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   size = rel(.6)),
+        axis.text.y = element_text(size = rel(.75))) 
+
+ggarrange(plotlist = list(top_feats_plt, top_feats_plt2), nrow = 2, ncol = 1,
+          labels = "AUTO", common.legend = T, legend = "right")
+
+
+```
+
+Note that in our analysis thus far, we have not performed any inference on the estimated parameters, but one could do hypothesis testing on the estimated parameters by using the bootstrap to obtain an estimate of the variance of the parameters and using an appropriate test statistic.
+
+# Conclusion
+
+```{r final-model}
+
+# final predictions
+final_pred <- sapply(rf_fit, 
+                     FUN = function(X) {
+                       return(predict(X, newdata = Xts))
+                     })
+
+# report test error
+test_mse <- evalMSE(pred_ls = list(final_pred), Yts = Yts)[, 1]
+test_corr <- evalCorr(pred_ls = list(final_pred), Yts = Yts)[, 1]
+
+```
+
+Overall, the 20 individual random forest models gave the lowest validation MSE and the highest correlation. The random forest also appears to be quite stable and a reasonable fit for the given data. We thus conclude from this exploration and analysis that the 20 individual random forest fits are the best models for predicting the 20 voxel responses given the Gabor-transformed image data. Random forest's success here may even hint at the idea that the voxels activate in a thresholding-like fashion, but further analysis and experimental validation is needed to justify this. Lastly, we used the final random forest model to make predictions on the test set and report the test MSE to be `r round(test_mse, 2)` and the test correlation to be `r round(test_corr, 2)`. This is further indication that we have fairly good generalization power with our random forest model.
+
+```{r test-pred, eval = F}
+
+# final predictions
+my_pred <- predict(rf_fit[[1]], newdata = fmri_dat$val_feat)
+write.table(my_pred, "./output/predv1_tiffanytang.txt", 
+            row.names = F, col.names = F)
+
+```
+
